@@ -1,0 +1,265 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>METANIT.COM</title>
+    <style>
+        td {
+            padding: 5px;
+        }
+
+        button {
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loginForm">
+        <h3>Вход на сайт</h3>
+        <p>
+            <label>Введите email</label><br />
+            <input type="email" id="email" />
+        </p>
+        <p>
+            <label>Введите пароль</label><br />
+            <input type="password" id="password" />
+        </p>
+        <input type="submit" id="submitLogin" value="Логин" />
+    </div>
+    <p>
+        <input type="submit" id="logOut" value="Выход" />
+    </p>
+    
+
+    <h2>Список пользователей</h2>
+    <div>
+        <input type="hidden" id="userId" />
+        <p>
+            Имя:<br />
+            <input id="userName" />
+        </p>
+        <p>
+            Возраст:<br />
+            <input id="userAge" type="number" />
+        </p>
+        <p>
+            <button id="saveBtn">Сохранить</button>
+            <button id="resetBtn">Сбросить</button>
+        </p>
+    </div>
+    <table>
+        <thead><tr><th>Имя</th><th>Возраст</th><th></th></tr></thead>
+        <tbody>
+        </tbody>
+    </table>
+
+    <script>
+        var tokenKey = "accessToken";
+        // при нажатии на кнопку отправки формы идет запрос к /login для получения токена
+        document.getElementById("submitLogin").addEventListener("click", async e => {
+            e.preventDefault();
+            // отправляет запрос и получаем ответ
+            const response = await fetch("/login", {
+                method: "POST",
+                headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: document.getElementById("email").value,
+                    password: document.getElementById("password").value
+                })
+            });
+            // если запрос прошел нормально
+            if (response.ok === true) {
+                // получаем данные
+                const data = await response.json();
+
+                // сохраняем в хранилище sessionStorage токен доступа
+                sessionStorage.setItem(tokenKey, data.access_token);
+                getUsers();
+            }
+            else  // если произошла ошибка, получаем код статуса
+                console.log("Status: ", response.status);
+        });
+
+        
+        // условный выход - просто удаляем токен и меняем видимость блоков
+        document.getElementById("logOut").addEventListener("click", e => {
+
+            e.preventDefault();
+            reset();
+            const rows = document.querySelector("tbody");
+            var new_tbody = document.createElement('tbody');
+            
+            rows.parentNode.replaceChild(new_tbody, rows)
+            sessionStorage.removeItem(tokenKey);
+        });
+
+        document.getElementById("resetBtn").addEventListener("click", () => reset());
+
+        // отправка формы
+        document.getElementById("saveBtn").addEventListener("click", async () => {
+
+            const id = document.getElementById("userId").value;
+            const name = document.getElementById("userName").value;
+            const age = document.getElementById("userAge").value;
+            if (id === "")
+                await createUser(name, age);
+            else
+                await editUser(id, name, age);
+            reset();
+        });
+
+        // Получение всех пользователей
+        async function getUsers() {
+            // отправляет запрос и получаем ответ
+            const response = await fetch("/api/users", {
+                method: "GET",
+                headers: {
+                    "Accept": "application/json",
+                    "Authorization": "Bearer " + sessionStorage.getItem(tokenKey)  // передача токена в заголовке
+                }
+            });
+            // если запрос прошел нормально
+            if (response.ok === true) {
+                // получаем данные
+                const users = await response.json();
+                const rows = document.querySelector("tbody");
+                var new_tbody = document.createElement('tbody');
+                users.forEach(user => new_tbody.append(row(user)));
+                rows.parentNode.replaceChild(new_tbody, rows)
+                // добавляем полученные элементы в таблицу
+
+            }
+        }
+        // Получение одного пользователя
+        async function getUser(id) {
+            const response = await fetch(`/api/users/${id}`, {
+                method: "GET",
+                headers: {
+                    "Accept": "application/json",
+                    "Authorization": "Bearer " + sessionStorage.getItem(tokenKey)  // передача токена в заголовке
+                }
+            });
+            if (response.ok === true) {
+                const user = await response.json();
+                document.getElementById("userId").value = user.id;
+                document.getElementById("userName").value = user.name;
+                document.getElementById("userAge").value = user.age;
+            }
+            else {
+                // если произошла ошибка, получаем сообщение об ошибке
+                const error = await response.json();
+                console.log(error.message); // и выводим его на консоль
+            }
+        }
+        // Добавление пользователя
+        async function createUser(userName, userAge) {
+
+            const response = await fetch("api/users", {
+                method: "POST",
+                headers: {
+                    "Accept": "application/json",
+                    "Authorization": "Bearer " + sessionStorage.getItem(tokenKey),  // передача токена в заголовке
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    name: userName,
+                    age: parseInt(userAge, 10)
+                })
+            });
+            if (response.ok === true) {
+                const user = await response.json();
+                document.querySelector("tbody").append(row(user));
+            }
+            else {
+                const error = await response.json();
+                console.log(error.message);
+            }
+        }
+        // Изменение пользователя
+        async function editUser(userId, userName, userAge) {
+            const response = await fetch("api/users", {
+                method: "PUT",
+
+                headers: {
+                    "Accept": "application/json",
+                    "Authorization": "Bearer " + sessionStorage.getItem(tokenKey),  // передача токена в заголовке
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    id: userId,
+                    name: userName,
+                    age: parseInt(userAge, 10)
+                })
+            });
+            if (response.ok === true) {
+                const user = await response.json();
+                document.querySelector(`tr[data-rowid='${user.id}']`).replaceWith(row(user));
+            }
+            else {
+                const error = await response.json();
+                console.log(error.message);
+            }
+        }
+        // Удаление пользователя
+        async function deleteUser(id) {
+            const response = await fetch(`/api/users/${id}`, {
+                method: "DELETE",
+                headers: {
+                    "Accept": "application/json",
+                    "Authorization": "Bearer " + sessionStorage.getItem(tokenKey),  // передача токена в заголовке
+                }
+            });
+            if (response.ok === true) {
+                const user = await response.json();
+                document.querySelector(`tr[data-rowid='${user.id}']`).remove();
+            }
+            else {
+                const error = await response.json();
+                console.log(error.message);
+            }
+        }
+
+        // сброс данных формы после отправки
+        function reset() {
+                document.getElementById("userId").value =
+                document.getElementById("userName").value =
+                document.getElementById("userAge").value = "";
+        }
+        // создание строки для таблицы
+        function row(user) {
+
+            const tr = document.createElement("tr");
+            tr.setAttribute("data-rowid", user.id);
+
+            const nameTd = document.createElement("td");
+            nameTd.append(user.name);
+            tr.append(nameTd);
+
+            const ageTd = document.createElement("td");
+            ageTd.append(user.age);
+            tr.append(ageTd);
+
+            const linksTd = document.createElement("td");
+
+            const editLink = document.createElement("button");
+            editLink.append("Изменить");
+            editLink.addEventListener("click", async () => await getUser(user.id));
+            linksTd.append(editLink);
+
+            const removeLink = document.createElement("button");
+            removeLink.append("Удалить");
+            removeLink.addEventListener("click", async () => await deleteUser(user.id));
+
+            linksTd.append(removeLink);
+            tr.appendChild(linksTd);
+
+            return tr;
+        }
+        // сброс значений формы
+
+
+
+    </script>
+</body>
+</html>
